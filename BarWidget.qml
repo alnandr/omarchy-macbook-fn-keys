@@ -7,12 +7,23 @@ BarWidget {
   id: root
   moduleName: "io.github.alnandr.macbook-fn-keys"
 
-  // Reading _services (not just calling serviceFor) makes the binding
-  // re-evaluate when the shell finishes loading the service after the bar.
-  readonly property var service: {
+  // Omarchy 4.x hands third-party widgets a scoped PluginShellApi
+  // (bar.shell.serviceFor) instead of ShellRoot, so _services is not
+  // reachable. The lookup is not reactive, so retry until the shell has
+  // created the service.
+  property var service: null
+  function lookupService() {
     var shell = bar ? bar.shell : null
-    if (!shell || !shell._services) return null
-    return shell._services[moduleName] || null
+    var found = shell && typeof shell.serviceFor === "function" ? shell.serviceFor(moduleName) : null
+    if (found !== service) service = found
+  }
+  onBarChanged: lookupService()
+  Component.onCompleted: lookupService()
+  Timer {
+    interval: 500
+    repeat: true
+    running: !root.service
+    onTriggered: root.lookupService()
   }
   readonly property bool available: service ? service.available : false
   readonly property bool ready: service ? service.ready : false

@@ -94,6 +94,8 @@ Item {
   }
 
   function setMode(target) {
+    // Any explicit switch, by the user or the boot sync itself, ends the boot sync.
+    bootSyncDone = true
     if (busy || !available) return
     if (target !== 1 && target !== 2) return
     busy = true
@@ -174,6 +176,35 @@ Item {
     onLoadFailed: {
       root.available = false
       root.mode = "unavailable"
+    }
+  }
+
+  // hid_apple is often loaded from the initramfs (mkinitcpio keyboard +
+  // modconf hooks), which carries a stale copy of modprobe.d, so the mode
+  // chosen here would be lost on reboot. Re-apply the persisted mode once per
+  // shell start instead of rebuilding the initramfs on every toggle.
+  readonly property string persistentPath: "/etc/modprobe.d/hid_apple.conf"
+  property string persistedMode: ""
+  property bool bootSyncDone: false
+
+  function syncPersistedMode() {
+    if (bootSyncDone || !ready || busy || persistedMode === "" || mode === "unavailable") return
+    bootSyncDone = true
+    if (persistedMode === "1" && mode !== "media") setMode(1)
+    else if (persistedMode === "2" && mode !== "fkeys") setMode(2)
+  }
+
+  onReadyChanged: syncPersistedMode()
+  onModeChanged: syncPersistedMode()
+  onPersistedModeChanged: syncPersistedMode()
+
+  FileView {
+    id: persistentFile
+    path: root.persistentPath
+    printErrors: false
+    onLoaded: {
+      var match = /^\s*options\s+hid_apple\s+.*\bfnmode=([12])\b/m.exec(text())
+      root.persistedMode = match ? match[1] : ""
     }
   }
 
